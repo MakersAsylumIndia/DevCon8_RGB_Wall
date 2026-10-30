@@ -1,9 +1,9 @@
-# MAKER'S ASYLUM INNOVATION SCHOOL
-## YY COHORT
-## NAME OF PROJECT
+# MAKER'S ASYLUM
+## DevCon8 2026 MUMBAI
+## RGB INTERACTIVE WALL
 
-Describe the project.
-Describe what are the contents of each folder - CODE, CAD, Electronics etc
+One ESP32, One RGB Ring LED, One touch sensor, and much WOW !!!!
+A large, interactive LED wall installation using super simple hardware. Touching one touch should (hopefully) propogate ligh ripples across the wall.
 
 
 ## License

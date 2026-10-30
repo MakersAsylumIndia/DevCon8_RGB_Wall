@@ -1,6 +1,6 @@
 ﻿Name of the Material/Component,Quantity,Reference Link,Additional Note
-,,,
-,,,
-,,,
-,,,
-,,,
+ESP32,1,,"ESP32 DevKit Module, or any similar module. Maybe even the ESP Super Mini or Seeed Xiao ought to work"
+Ring LED,1,,WS2812B RGB Ring LED with 16 pixels.
+"JST socket, 3 pin, with wires",2,,"3 pin JST socket with (ideally) Red, Black, Yellow wires in that sequence, about 3 ~ 4 inches long"
+"Copper Tape, 5mm wide",-,,Apply small piece of copper tape to the end of the wire for touch sensor input
+The other hardware to put it all together will be designed and built by the community,,,
