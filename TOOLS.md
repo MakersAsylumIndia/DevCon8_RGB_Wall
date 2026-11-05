@@ -19,6 +19,7 @@ cp Code/HexNode_01/secrets.example.h Code/HexNode_01/secrets.h   # then fill in 
 | `./flash_fast.sh` | Compiles once, flashes every board you plug in, several at once through a hub. Fastest. Touch D13 to check: blue onboard LED + white ring glow. |
 | `./hexnode.sh --led` | One board at a time, with a logged D13 touch test and ring check. `--pos` gives boards Ethereum logo positions. |
 | `./wifi_check.sh` | Flashes a test sketch on one board: can it join the Wi-Fi, is there a captive portal, can the laptop reach it, which channel. |
+| `flash_fast.bat` (Windows) | Same as `flash_fast.sh`: double-click it. Runs `flash_fast.ps1`; needs `arduino-cli` (or a prebuilt `firmware\` folder) and esptool (`pip install esptool`, or the one in the Arduino esp32 core). Boards need the CP210x or CH340 USB driver. |
 
 ## Update over Wi-Fi (no USB)
 
