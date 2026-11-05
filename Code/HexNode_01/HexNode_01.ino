@@ -28,6 +28,7 @@
       pos 2 1     set position q=2 r=1 (saved to flash)
       pos auto    forget position, use signal strength to find neighbours
       test        fire a wave from this module
+      ring        flash the whole ring red, green, blue (wiring check)
       dbg         toggle live touch readings (use this to tune TOUCH_ON_PCT)
       info        print id, position and neighbour table
 */
@@ -40,11 +41,13 @@
 #include <Adafruit_NeoPixel.h>
 #include <math.h>
 #include <string.h>
+#include "wall_net.h"   // Wi-Fi + over-the-air updates (offline without secrets.h)
 
 // ============================ USER SETTINGS ============================
 #define LED_PIN          15     // D13: data to ring DIN (through 330 ohm), next to GND and VIN on the header
 #define NUM_LEDS         16
 #define TOUCH_PIN        13      // T0 on classic ESP32
+#define STATUS_LED       2      // onboard blue LED on DevKit V1: on while touched (tests boards with no ring)
 #define BRIGHTNESS       90     // 0-255, keeps a USB power bank happy
 
 constexpr int8_t  POS_UNKNOWN        = 127;
@@ -53,6 +56,7 @@ constexpr int8_t  DEFAULT_R          = POS_UNKNOWN;
 constexpr int     MAX_LINK_HEX_DIST  = 2;     // 1 = strict neighbours; 2 = can hop over a missing module
 constexpr int     NEIGHBOR_RSSI_MIN  = -55;   // dBm, only used when positions are unknown
 constexpr int8_t  TX_POWER_QDBM      = 20;    // 20 = 5 dBm (units of 0.25 dBm); lower = better RSSI separation
+constexpr int8_t  TX_POWER_WIFI_QDBM = 60;    // 15 dBm when on Wi-Fi, so the router hears every board
 
 constexpr uint8_t ESPNOW_CHANNEL     = 1;
 constexpr uint32_t HELLO_MS          = 1000;
@@ -61,7 +65,8 @@ constexpr uint32_t NEIGHBOR_TIMEOUT  = 5000;
 constexpr float   TOUCH_ON_PCT       = 18.0f; // % change from baseline that counts as touch / hand nearby
 constexpr float   TOUCH_OFF_PCT      = 9.0f;
 constexpr uint32_t TOUCH_COOLDOWN_MS = 250;   // min time between two waves from one module
-constexpr uint32_t HOLD_REPEAT_MS    = 900;   // while held, fire again this often
+constexpr uint32_t HOLD_REPEAT_MS    = 0;     // while held, fire again this often (0 = one wave per touch)
+constexpr uint32_t TOUCH_STUCK_MS    = 3000;  // "touched" longer than this = stuck reading, re-baseline
 
 constexpr uint8_t MAX_WAVE_DIST      = 12;    // how far (in hex cells) a wave travels
 constexpr uint32_t HOP_MS            = 150;   // time for the wave to cross one cell
@@ -331,9 +336,13 @@ void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
 
 static void startRadio() {
   WiFi.mode(WIFI_STA);
-  WiFi.disconnect();
-  esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
-  esp_wifi_set_max_tx_power(TX_POWER_QDBM);
+  // On Wi-Fi the radio is locked to the router's channel; ESP-NOW then shares it.
+  uint8_t wifiChannel = wallnet::begin();
+  if (!wifiChannel) {
+    WiFi.disconnect();
+    esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+  }
+  esp_wifi_set_max_tx_power(wifiChannel ? TX_POWER_WIFI_QDBM : TX_POWER_QDBM);
   if (esp_now_init() != ESP_OK) {
     Serial.println("ESP-NOW init failed");
     return;
@@ -342,7 +351,7 @@ static void startRadio() {
   esp_now_peer_info_t peer;
   memset(&peer, 0, sizeof(peer));
   memcpy(peer.peer_addr, BCAST, 6);
-  peer.channel = ESPNOW_CHANNEL;
+  peer.channel = 0;   // 0 = whatever channel the radio is on (Wi-Fi's, or ESPNOW_CHANNEL offline)
   peer.encrypt = false;
   esp_now_add_peer(&peer);
 }
@@ -357,6 +366,24 @@ static void sendHello(uint32_t now) {
 }
 
 // -------------------------------- touch --------------------------------
+// whole ring red, green, blue - quick check that the ring is wired (harmless with no ring)
+static void ringSelfTest() {
+  const uint32_t colors[] = { ring.Color(255, 0, 0), ring.Color(0, 255, 0), ring.Color(0, 0, 255) };
+  for (uint32_t c : colors) {
+    ring.fill(c);
+    ring.show();
+    delay(400);
+  }
+  ring.clear();
+  ring.show();
+}
+
+// solid dim blue while an over-the-air update downloads (the loop is blocked meanwhile)
+static void showUpdating() {
+  ring.fill(ring.Color(0, 0, 80));
+  ring.show();
+}
+
 static void calibrateTouch() {
   float sum = 0;
   const int N = 40;
@@ -397,7 +424,8 @@ static void pollTouch(uint32_t now) {
     }
   } else {
     if (pct <= TOUCH_OFF_PCT) touched = false;
-    else if (now - lastFire >= HOLD_REPEAT_MS) { lastFire = now; triggerLocal(); }
+    else if (now - lastFire >= TOUCH_STUCK_MS) { baseline = smoothed; touched = false; }
+    else if (HOLD_REPEAT_MS && now - lastFire >= HOLD_REPEAT_MS) { lastFire = now; triggerLocal(); }
   }
 }
 
@@ -443,6 +471,10 @@ static void render(uint32_t now) {
     }
   }
 
+  // whole ring glows white while D13 is touched, goes away on release
+  if (touched)
+    for (int i = 0; i < NUM_LEDS; i++) { fr[i] += 160; fg[i] += 160; fb[i] += 160; }
+
   // status overlay: after neighbour count changes, show that many green LEDs for 1.5 s
   bool status = (int32_t)(now - statusUntil) < 0;
 
@@ -471,6 +503,11 @@ static void printInfo() {
   uint32_t now = millis();
   Serial.printf("id=%08X  pos=", (unsigned)myId);
   if (myPosKnown) Serial.printf("(%d,%d)\n", myQ, myR); else Serial.println("unknown (RSSI mode)");
+  if (wallnet::online())
+    Serial.printf("  firmware v%d  wifi ip %s channel %d signal %d dBm\n", FW_VERSION,
+                  WiFi.localIP().toString().c_str(), WiFi.channel(), WiFi.RSSI());
+  else
+    Serial.printf("  firmware v%d  wifi offline\n", FW_VERSION);
   for (int i = 0; i < MAX_NEIGHBORS; i++) {
     if (!nbrs[i].used) continue;
     Serial.printf("  %08X pos=(%d,%d) rssi=%.0f age=%lums %s\n", (unsigned)nbrs[i].id, nbrs[i].q, nbrs[i].r,
@@ -494,8 +531,10 @@ static void runCommand(char *s) {
     triggerLocal();
   } else if (strncmp(s, "info", 4) == 0) {
     printInfo();
+  } else if (strncmp(s, "ring", 4) == 0) {
+    ringSelfTest();
   } else {
-    Serial.println("Commands: pos <q> <r> | pos auto | test | dbg | info");
+    Serial.println("Commands: pos <q> <r> | pos auto | test | ring | dbg | info");
   }
 }
 
@@ -514,6 +553,8 @@ static void readSerial() {
 void setup() {
   Serial.begin(115200);
   delay(200);
+  pinMode(STATUS_LED, OUTPUT);
+  digitalWrite(STATUS_LED, LOW);
 
   uint64_t mac = ESP.getEfuseMac();
   myId = (uint32_t)(mac >> 16) ^ (uint32_t)(mac << 16);
@@ -532,6 +573,7 @@ void setup() {
   ring.setBrightness(BRIGHTNESS);
   ring.clear();
   ring.show();
+  ringSelfTest();
 
   Serial.println("\nHexNode starting - keep hands off the touch wire for calibration");
   calibrateTouch();
@@ -539,7 +581,7 @@ void setup() {
   rxQueue = xQueueCreate(24, sizeof(RxItem));
   startRadio();
   printInfo();
-  Serial.println("Commands: pos <q> <r> | pos auto | test | dbg | info");
+  Serial.println("Commands: pos <q> <r> | pos auto | test | ring | dbg | info");
 }
 
 void loop() {
@@ -549,10 +591,23 @@ void loop() {
   while (xQueueReceive(rxQueue, &it, 0) == pdTRUE) handlePacket(it);
 
   pollTouch(now);
+  digitalWrite(STATUS_LED, touched ? HIGH : LOW);
   sendHello(now);
   pumpTx(now);
   updateStatus(now);
   readSerial();
+
+  static char netStatus[160];
+  static uint32_t lastNetStatus = 0;
+  if (now - lastNetStatus >= 1000) {
+    lastNetStatus = now;
+    char pos[16];
+    if (myPosKnown) snprintf(pos, sizeof(pos), "%d,%d", myQ, myR); else strcpy(pos, "-");
+    snprintf(netStatus, sizeof(netStatus), "id=%08X ver=%d pos=%s rssi=%d links=%d touch=%d up=%lu",
+             (unsigned)myId, FW_VERSION, pos, (int)WiFi.RSSI(), countLinked(now), touched ? 1 : 0,
+             (unsigned long)(now / 1000));
+  }
+  wallnet::loop(now, myId, netStatus, showUpdating);
 
   if (now - lastFrame >= 16) {
     lastFrame = now;
