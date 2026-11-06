@@ -51,12 +51,12 @@
 #define BRIGHTNESS       90     // 0-255, keeps a USB power bank happy
 
 constexpr int8_t  POS_UNKNOWN        = 127;
+constexpr float   WHITE_LEVEL        = 110.0f;  // white mode brightness (0-255, before BRIGHTNESS)
 constexpr int8_t  DEFAULT_Q          = POS_UNKNOWN;  // used until you type "pos q r"
 constexpr int8_t  DEFAULT_R          = POS_UNKNOWN;
 constexpr int     MAX_LINK_HEX_DIST  = 2;     // 1 = strict neighbours; 2 = can hop over a missing module
 constexpr int     NEIGHBOR_RSSI_MIN  = -55;   // dBm, only used when positions are unknown
 constexpr int8_t  TX_POWER_QDBM      = 20;    // 20 = 5 dBm (units of 0.25 dBm); lower = better RSSI separation
-constexpr int8_t  TX_POWER_WIFI_QDBM = 60;    // 15 dBm when on Wi-Fi, so the router hears every board
 
 constexpr uint8_t ESPNOW_CHANNEL     = 1;
 constexpr uint32_t HELLO_MS          = 1000;
@@ -134,6 +134,7 @@ uint8_t  seenHead = 0;
 uint32_t myId;
 int8_t   myQ = POS_UNKNOWN, myR = POS_UNKNOWN;
 bool     myPosKnown = false;
+bool     whiteMode = true;     // steady white instead of the colour glow; saved, "white"/"normal" commands
 uint16_t mySeq;
 
 float ledX[NUM_LEDS], ledY[NUM_LEDS];
@@ -337,12 +338,9 @@ void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
 static void startRadio() {
   WiFi.mode(WIFI_STA);
   // On Wi-Fi the radio is locked to the router's channel; ESP-NOW then shares it.
-  uint8_t wifiChannel = wallnet::begin();
-  if (!wifiChannel) {
-    WiFi.disconnect();
-    esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
-  }
-  esp_wifi_set_max_tx_power(wifiChannel ? TX_POWER_WIFI_QDBM : TX_POWER_QDBM);
+  // Offline it stays on ESPNOW_CHANNEL and retries the Wi-Fi in the background.
+  uint8_t wifiChannel = wallnet::begin(ESPNOW_CHANNEL);
+  esp_wifi_set_max_tx_power(wifiChannel ? wallnet::WIFI_TX_QDBM : TX_POWER_QDBM);
   if (esp_now_init() != ESP_OK) {
     Serial.println("ESP-NOW init failed");
     return;
@@ -445,12 +443,17 @@ static inline void addColor(int i, uint32_t c, float k) {
 static void render(uint32_t now) {
   for (int i = 0; i < NUM_LEDS; i++) fr[i] = fg[i] = fb[i] = 0;
 
+  // white mode: steady white base (ripples and touch glow still show on top)
+  if (whiteMode) {
+    for (int i = 0; i < NUM_LEDS; i++) { fr[i] += WHITE_LEVEL; fg[i] += WHITE_LEVEL; fb[i] += WHITE_LEVEL; }
+  } else {
   // idle glow: slow, dim colour that depends on position
   uint16_t idleHue = (uint16_t)(((now / 40) + (myPosKnown ? myQ * 18 + myR * 11 : 0)) & 0xFF) << 8;
   uint32_t idleC = Adafruit_NeoPixel::ColorHSV(idleHue, 255, 255);
   for (int i = 0; i < NUM_LEDS; i++) {
     float v = 0.05f + 0.035f * sinf(now * 0.0011f + i * 0.4f);
     addColor(i, idleC, v);
+  }
   }
 
   // waves
@@ -538,6 +541,31 @@ static void runCommand(char *s) {
   }
 }
 
+// "find this board": ring flashes white and the onboard LED blinks, 4 times
+static void blinkMe() {
+  for (int i = 0; i < 4; i++) {
+    ring.fill(ring.Color(255, 255, 255));
+    ring.show();
+    digitalWrite(STATUS_LED, HIGH);
+    delay(200);
+    ring.clear();
+    ring.show();
+    digitalWrite(STATUS_LED, LOW);
+    delay(200);
+  }
+}
+
+// commands sent over Wi-Fi from ota_server.py (wall_net.h only passes the safe ones)
+static void onRemoteCommand(const char *cmd) {
+  if (!strcmp(cmd, "blink")) blinkMe();
+  else if (!strcmp(cmd, "ring")) ringSelfTest();
+  else if (!strcmp(cmd, "test")) triggerLocal();
+  else if (!strcmp(cmd, "white") || !strcmp(cmd, "normal")) {
+    whiteMode = !strcmp(cmd, "white");
+    prefs.putBool("white", whiteMode);
+  }
+}
+
 static void readSerial() {
   while (Serial.available()) {
     char c = (char)Serial.read();
@@ -562,6 +590,7 @@ void setup() {
 
   prefs.begin("hexnode", false);
   setPos(prefs.getChar("q", DEFAULT_Q), prefs.getChar("r", DEFAULT_R));
+  whiteMode = prefs.getBool("white", true);
 
   for (int i = 0; i < NUM_LEDS; i++) {
     float a = (RING_ROTATION_DEG + 360.0f * i / NUM_LEDS * (RING_CLOCKWISE ? 1.0f : -1.0f)) * DEG_TO_RAD;
@@ -603,11 +632,11 @@ void loop() {
     lastNetStatus = now;
     char pos[16];
     if (myPosKnown) snprintf(pos, sizeof(pos), "%d,%d", myQ, myR); else strcpy(pos, "-");
-    snprintf(netStatus, sizeof(netStatus), "id=%08X ver=%d pos=%s rssi=%d links=%d touch=%d up=%lu",
+    snprintf(netStatus, sizeof(netStatus), "id=%08X ver=%d pos=%s rssi=%d links=%d touch=%d up=%lu cmds=%u",
              (unsigned)myId, FW_VERSION, pos, (int)WiFi.RSSI(), countLinked(now), touched ? 1 : 0,
-             (unsigned long)(now / 1000));
+             (unsigned long)(now / 1000), (unsigned)wallnet::cmdCount);
   }
-  wallnet::loop(now, myId, netStatus, showUpdating);
+  wallnet::loop(now, myId, netStatus, showUpdating, onRemoteCommand);
 
   if (now - lastFrame >= 16) {
     lastFrame = now;

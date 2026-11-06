@@ -24,7 +24,7 @@ VERSION = os.path.join(OTA_DIR, "version.txt")
 TEST_IDS = os.path.join(OTA_DIR, "test_ids.txt")
 MAX_DOWNLOADS = 15       # boards downloading at the same time
 ONLINE_S = 15            # a board is "online" if it reported in the last 15 s
-FIELDS = ("id", "ver", "pos", "rssi", "links", "touch", "up")
+FIELDS = ("id", "ver", "pos", "rssi", "links", "touch", "up", "cmds")
 
 boards = {}              # id -> {"ip":..., "seen": t, fields...}
 lock = threading.Lock()
@@ -66,6 +66,26 @@ def beacon():
         time.sleep(2)
 
 
+REMOTE_CMDS = ("blink", "ring", "test", "white", "normal")   # the firmware only accepts these
+cmd_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+cmd_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
+
+def send_command(target, cmd):
+    """target = board id or 'all'. Unicast to known boards (Wi-Fi broadcast is lossy),
+    plus a broadcast for 'all' so boards the server hasn't heard from yet get it too."""
+    msg = f"HEXCMD {target} {cmd}".encode()
+    now = time.time()
+    with lock:
+        ips = [b["ip"] for b in boards.values()
+               if now - b["seen"] < ONLINE_S and (target == "all" or b["id"] == target)]
+    for ip in ips:
+        cmd_sock.sendto(msg, (ip, BEACON_PORT))
+    if target == "all" or not ips:
+        cmd_sock.sendto(msg, ("255.255.255.255", BEACON_PORT))
+    return len(ips)
+
+
 def reports():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -90,9 +110,16 @@ body{font:14px system-ui,sans-serif;margin:16px;background:#111;color:#eee}
 #sum{font-size:18px;margin-bottom:12px} .grid{display:flex;flex-wrap:wrap;gap:6px}
 .b{width:150px;padding:6px;border-radius:6px;font-size:12px;line-height:1.4}
 .ok{background:#14532d}.old{background:#854d0e}.off{background:#3f3f46;color:#aaa}
+#bar{margin-bottom:12px} button{margin:2px;cursor:pointer}
 .b b{font-size:13px} .t{outline:2px solid #fff} #sum{line-height:1.6}
 </style></head><body>
-<div id="sum">loading...</div><div class="grid" id="g"></div>
+<div id="sum">loading...</div>
+<div id="bar" hidden>All boards: <button onclick="cmd('all','blink')">Blink</button>
+<button onclick="cmd('all','ring')">Ring check</button>
+<button onclick="cmd('all','test')">Ripple</button>
+<button onclick="cmd('all','white')">All white</button>
+<button onclick="cmd('all','normal')">Colour mode</button> <span id="msg"></span></div>
+<div class="grid" id="g"></div>
 <script>
 function line(parent, text, bold) {
   const el = document.createElement(bold ? 'b' : 'div');
@@ -108,6 +135,8 @@ async function tick() {
     `release v${d.release}  |  ${stage}  |  ${on.length} online  |  ${latest.length} on v${d.release}  |  ` +
     `${on.length - latest.length} old  |  downloading ${d.downloading}/${d.max_downloads}  |  ` +
     `${d.boards.length - on.length} offline`;
+  // command buttons only exist from firmware v9; v8 boards ignore commands
+  document.getElementById('bar').hidden = d.release < 9;
   const g = document.getElementById('g');
   g.replaceChildren(...d.boards.map(b => {
     const box = document.createElement('div');
@@ -115,10 +144,22 @@ async function tick() {
                     (b.touch === '1' ? ' t' : '');
     line(box, `${b.id} v${b.ver}${b.test ? '  [test]' : ''}${b.downloading ? '  ↓' : ''}`, true);
     line(box, `pos ${b.pos} · ${b.ip}`);
-    line(box, `${b.rssi} dBm · ${b.links} links · up ${b.up}s`);
+    line(box, `${b.rssi} dBm · ${b.links} links · up ${b.up}s` + (b.cmds ? ` · ${b.cmds} cmds` : ''));
     if (!b.online) line(box, `last seen ${b.ago}s ago`);
+    if (b.online && +b.ver >= 9) {
+      const btn = document.createElement('button');
+      btn.textContent = 'Blink';
+      btn.onclick = () => cmd(b.id, 'blink');
+      box.appendChild(btn);
+    }
     return box;
   }));
+}
+async function cmd(target, c) {
+  const r = await fetch('/api/cmd', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                     body: JSON.stringify({target: target, cmd: c})});
+  const d = await r.json();
+  document.getElementById('msg').textContent = d.error ? d.error : `sent "${c}" to ${target} (${d.sent} board(s))`;
 }
 tick(); setInterval(tick, 2000);
 </script></body></html>"""
@@ -135,6 +176,20 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_POST(self):
+        if self.path != "/api/cmd":
+            return self.send(404, b"not found", "text/plain")
+        try:
+            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0)) or 0))
+            target, cmd = str(body["target"]), str(body["cmd"])
+        except (ValueError, KeyError, TypeError):
+            return self.send(400, b'{"error": "bad request"}', "application/json")
+        if cmd not in REMOTE_CMDS or not (target == "all" or re.fullmatch(r"[0-9A-F]{8}", target)):
+            return self.send(400, b'{"error": "unknown command or target"}', "application/json")
+        n = send_command(target, cmd)
+        print(f"command {cmd} -> {target} ({n} board(s))")
+        self.send(200, json.dumps({"sent": n}).encode(), "application/json")
 
     def do_GET(self):
         if self.path == "/":
