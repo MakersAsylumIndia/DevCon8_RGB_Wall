@@ -60,3 +60,15 @@ _autosave-*
 
 # Version Control History
 /.history
+
+# Wi-Fi credentials and local build output
+secrets.h
+.build/
+.flash_jobs/
+.build_wifi/
+ota/
+.build_ota/
+.DS_Store
+Code/**/build/
+*_log.csv
+.ff_*
