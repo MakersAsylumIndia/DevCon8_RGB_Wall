@@ -1,6 +1,7 @@
 # FreeCAD temporary files
 *.FCTmp
 *.FCbak
+*.FCBak
 
 # Document backups
 User/Backup/

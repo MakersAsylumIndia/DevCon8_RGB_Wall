@@ -25,7 +25,7 @@ import zipfile
 import FreeCAD as App
 import Part
 
-PROJECT = os.path.expanduser("~/Documents/AI/FreeCAD_AI/HexNode_RGB_Wall")
+PROJECT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # CAD/HexNode_RGB_Wall in the DevCon8_RGB_Wall repo
 
 # ---------------------------------------------------------------- parameters
 # (alias, value, note). Inputs first, then derived cells ("=..." formulas).
