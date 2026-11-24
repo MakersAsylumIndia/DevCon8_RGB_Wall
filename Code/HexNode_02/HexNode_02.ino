@@ -2,13 +2,14 @@
   HexNode - one module of an interactive light wall
   Version 2 (20 Nov 2026): tested on ESP32 DevKit V1 boards with the CP2102 USB chip.
   CPU at 80 MHz + gentle radio start stop the brownout resets; touch sensitivity via 'sens' (default 60/30).
-  Version 2.1 (24 Nov 2026): works on Arduino-ESP32 core 3.x and 4.x. Core 4.x (ESP-IDF 6) can report the
-  touch reading moving the other way, so the direction is now learned from the first touch; 'cal' recalibrates.
-  Version 2.2 (24 Nov 2026): on core 4.x touchRead() returns ~0 on the classic ESP32, so the raw touch
-  register is read directly instead.
+  Version 2.1 (24 Nov 2026): the touch direction (reading drops or rises) is learned from the first touch,
+  so other chips/cores work without editing; 'cal' recalibrates.
+  Version 2.3 (24 Nov 2026): core 4.0 bug - touchRead() returns 0 on the classic ESP32 (the core cannot
+  map pins to touch channels on ESP-IDF 6.1). On core 4.x the sketch now starts the ESP-IDF touch driver
+  itself. Tested on core 3.3.12 and 4.0.0. (2.2's register read is removed - it could not work there.)
   ---------------------------------------------------
   Hardware : ESP32 DevKit (classic), WS2812B ring x16, bare wire on a touch pin
-  Core     : Arduino-ESP32 3.x   (Boards Manager -> "esp32 by Espressif" 3.0.0 or newer)
+  Core     : Arduino-ESP32 3.x or 4.x   (Boards Manager -> "esp32 by Espressif")
   Library  : Adafruit NeoPixel   (Library Manager)
 
   HOW IT WORKS
@@ -53,8 +54,9 @@
 #include <string.h>
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
-#if defined(CONFIG_IDF_TARGET_ESP32)
-#include "soc/sens_struct.h"
+#if defined(CONFIG_IDF_TARGET_ESP32) && ESP_ARDUINO_VERSION_MAJOR >= 4
+#include "driver/touch_sens.h"              // core 4.x workaround, see TOUCH_DIRECT below
+#include "hal/touch_sensor_periph.h"
 #endif
 
 // ============================ USER SETTINGS ============================
@@ -171,44 +173,64 @@ bool     touched = false, dbg = false;
 uint8_t  onCount = 0;
 float    touchOnPct = TOUCH_ON_PCT, touchOffPct = TOUCH_OFF_PCT;   // set with "sens", kept in flash
 uint32_t lastFire = 0, lastTouchSample = 0, lastDbg = 0;
-// Which way the reading moves on a touch depends on the chip AND the core version:
-// classic ESP32 drops on core 3.x, but the ESP-IDF 6 touch driver under core 4.x can report it
-// the other way. So the direction is learned at run time: the change is measured both ways and
+// Which way the reading moves on a touch depends on the chip (classic ESP32 drops, S2/S3 rise).
+// So the direction is learned at run time: the change is measured both ways and
 // the first clear touch (>= touchOnPct in one direction) locks the direction in.
 // touchDir: -1 = drops when touched, +1 = rises, 0 = not known yet (both directions count).
 int8_t   touchDir = 0;
 uint32_t lastCal = 0;
 
-// Core 4.x (ESP-IDF 6.1) on the classic ESP32: touchRead() returns ~0 (it reads the driver's
-// software-filtered value, which most likely is not updated there). If the sensor itself keeps measuring, fall back to
-// reading the raw count straight from the touch register (same register layout in ESP-IDF 5.5 and 6.1).
-#ifndef TOUCH_FORCE_REG
-#define TOUCH_FORCE_REG 0               // 1 = always use the register read (for testing on core 3.x)
+// Core 4.0 bug (classic ESP32): ESP-IDF 6.1 dropped SOC_TOUCH_SENSOR_NUM, and the core's
+// digitalPinToTouchChannel() (esp32-hal-gpio.c) was not updated, so it says "Touch sensor not available
+// on this chip" and touchRead() returns 0 for every pin without starting the sensor.
+// Workaround: on core 4.x the sketch starts the ESP-IDF touch driver itself and reads the raw count.
+// Core 3.x keeps using touchRead().
+#if defined(CONFIG_IDF_TARGET_ESP32) && ESP_ARDUINO_VERSION_MAJOR >= 4
+#define TOUCH_DIRECT 1
+#else
+#define TOUCH_DIRECT 0
 #endif
-bool     touchFromReg = TOUCH_FORCE_REG;
-#if defined(CONFIG_IDF_TARGET_ESP32)
-static uint32_t touchRegRead(int ch) {
-  if (ch == 8) ch = 9; else if (ch == 9) ch = 8;           // T8/T9 are swapped in the register
-  return (ch & 1) ? SENS.touch_meas[ch >> 1].l_val : SENS.touch_meas[ch >> 1].h_val;
+
+#if TOUCH_DIRECT
+static touch_sensor_handle_t  touchSens = NULL;
+static touch_channel_handle_t touchChan = NULL;
+static bool touchDirectFailed = false;
+
+static bool touchDirectStart() {
+  int ch = -1;
+  for (int i = 0; i < 10; i++) if (touch_sensor_channel_io_map[i] == TOUCH_PIN) ch = i;
+  if (ch < 0) { Serial.printf("Touch: GPIO%d is not a touch pin\n", TOUCH_PIN); return false; }
+  touch_sensor_sample_config_t sc[1] = {TOUCH_SENSOR_V1_DEFAULT_SAMPLE_CONFIG(5.0f, TOUCH_VOLT_LIM_L_0V5, TOUCH_VOLT_LIM_H_1V7)};
+  touch_sensor_config_t cfg = TOUCH_SENSOR_DEFAULT_BASIC_CONFIG(1, sc);
+  cfg.meas_interval_us = 32.0f;                       // same timing the Arduino core uses
+  touch_channel_config_t cc = {};
+  cc.abs_active_thresh[0] = 1000;                     // unused here (no interrupts), must be set
+  cc.charge_speed = TOUCH_CHARGE_SPEED_7;
+  cc.init_charge_volt = TOUCH_INIT_CHARGE_VOLT_DEFAULT;
+  cc.group = TOUCH_CHAN_TRIG_GROUP_BOTH;
+  esp_err_t e = touch_sensor_new_controller(&cfg, &touchSens);
+  if (e == ESP_OK) e = touch_sensor_new_channel(touchSens, ch, &cc, &touchChan);
+  if (e == ESP_OK) e = touch_sensor_enable(touchSens);
+  if (e == ESP_OK) e = touch_sensor_start_continuous_scanning(touchSens);
+  if (e != ESP_OK) { Serial.printf("Touch: ESP-IDF touch driver failed to start (%s)\n", esp_err_to_name(e)); return false; }
+  Serial.printf("Touch: core 4.x - ESP-IDF touch driver started directly on GPIO%d (channel T%d)\n", TOUCH_PIN, ch);
+  delay(20);                                          // let the first measurements land
+  return true;
 }
 #endif
 
 static uint32_t readTouch() {
-  uint32_t v = touchRead(TOUCH_PIN);                        // also starts the touch sensor on first use
-#if defined(CONFIG_IDF_TARGET_ESP32)
-  if (touchFromReg || v < 5) {
-    int ch = digitalPinToTouchChannel(TOUCH_PIN);
-    if (ch >= 0) {
-      uint32_t r = touchRegRead(ch);
-      if (touchFromReg) return r;                           // once switched, stay on the register (a touch can read < 5)
-      if (r >= 5) {
-        if (!touchFromReg) { touchFromReg = true; Serial.println("touchRead() gives ~0 on this core - reading the touch register directly"); }
-        return r;
-      }
-    }
+#if TOUCH_DIRECT
+  if (!touchChan) {
+    if (touchDirectFailed) return 0;
+    if (!touchDirectStart()) { touchDirectFailed = true; return 0; }
   }
-#endif
+  uint32_t v = 0;
+  touch_channel_read_data(touchChan, TOUCH_CHAN_DATA_TYPE_RAW, &v);
   return v;
+#else
+  return touchRead(TOUCH_PIN);
+#endif
 }
 
 uint32_t lastHello = 0, lastFrame = 0, lastStatus = 0, statusUntil = 0;
@@ -566,7 +588,7 @@ static void printInfo() {
                 ESP_ARDUINO_VERSION_PATCH, esp_get_idf_version());
   Serial.printf("touch: on %.1f%%  off %.1f%%  baseline %.0f  direction %s\n", touchOnPct, touchOffPct, baseline,
                 touchDir < 0 ? "drops" : touchDir > 0 ? "rises" : "not learned yet");
-  Serial.printf("touch source: %s\n", touchFromReg ? "touch register (touchRead() gave ~0)" : "touchRead()");
+  Serial.printf("touch source: %s\n", TOUCH_DIRECT ? "ESP-IDF touch driver (core 4.x workaround)" : "touchRead()");
   Serial.printf("id=%08X  pos=", (unsigned)myId);
   if (myPosKnown) Serial.printf("(%d,%d)\n", myQ, myR); else Serial.println("unknown (RSSI mode)");
   for (int i = 0; i < MAX_NEIGHBORS; i++) {
