@@ -2,6 +2,8 @@
   HexNode - one module of an interactive light wall
   Version 2 (20 Nov 2026): tested on ESP32 DevKit V1 boards with the CP2102 USB chip.
   CPU at 80 MHz + gentle radio start stop the brownout resets; touch sensitivity via 'sens' (default 60/30).
+  Version 2.1 (24 Nov 2026): works on Arduino-ESP32 core 3.x and 4.x. Core 4.x (ESP-IDF 6) can report the
+  touch reading moving the other way, so the direction is now learned from the first touch; 'cal' recalibrates.
   ---------------------------------------------------
   Hardware : ESP32 DevKit (classic), WS2812B ring x16, bare wire on a touch pin
   Core     : Arduino-ESP32 3.x   (Boards Manager -> "esp32 by Espressif" 3.0.0 or newer)
@@ -33,7 +35,8 @@
       dbg         toggle live touch readings (use this to choose a sensitivity)
       sens 30     touch threshold: % change that counts as a touch (higher = less sensitive);
                   release at half of it. "sens 30 12" sets both. "sens" alone shows them (saved to flash)
-      info        print id, position and neighbour table
+      cal         recalibrate the touch baseline (hands off) and re-learn the touch direction
+      info        print core version, touch settings, id, position and neighbour table
 */
 
 #include <Arduino.h>
@@ -43,6 +46,8 @@
 #include <Preferences.h>
 #include <Adafruit_NeoPixel.h>
 #include <math.h>
+#include <esp_arduino_version.h>
+#include <esp_idf_version.h>
 #include <string.h>
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
@@ -161,11 +166,13 @@ bool     touched = false, dbg = false;
 uint8_t  onCount = 0;
 float    touchOnPct = TOUCH_ON_PCT, touchOffPct = TOUCH_OFF_PCT;   // set with "sens", kept in flash
 uint32_t lastFire = 0, lastTouchSample = 0, lastDbg = 0;
-#if defined(CONFIG_IDF_TARGET_ESP32)
-constexpr bool TOUCH_RISES = false;   // classic ESP32: reading drops when touched
-#else
-constexpr bool TOUCH_RISES = true;    // S2/S3: reading rises (re-tune TOUCH_ON_PCT, usually much smaller)
-#endif
+// Which way the reading moves on a touch depends on the chip AND the core version:
+// classic ESP32 drops on core 3.x, but the ESP-IDF 6 touch driver under core 4.x can report it
+// the other way. So the direction is learned at run time: the change is measured both ways and
+// the first clear touch (>= touchOnPct in one direction) locks the direction in.
+// touchDir: -1 = drops when touched, +1 = rises, 0 = not known yet (both directions count).
+int8_t   touchDir = 0;
+uint32_t lastCal = 0;
 
 uint32_t lastHello = 0, lastFrame = 0, lastStatus = 0, statusUntil = 0;
 int      lastLinked = -1, statusCount = 0;
@@ -404,27 +411,40 @@ static void calibrateTouch() {
     delay(25);
   }
   baseline = smoothed = sum / N;
+  touched = false; onCount = 0;
+  lastCal = millis();
   Serial.printf("Touch baseline: %.0f\n", baseline);
-  if (baseline < 5) Serial.println("WARNING: touch reading near zero - check the wire is on the touch pin");
+  if (baseline < 5) Serial.println("WARNING: touch reading near zero - check the wire is on the touch pin (will retry)");
 }
 
 static void pollTouch(uint32_t now) {
   if (now - lastTouchSample < 15) return;
   lastTouchSample = now;
+  if (baseline < 5) {                       // no usable reading yet (driver still starting, or no wire)
+    if (now - lastCal > 3000) calibrateTouch();
+    return;
+  }
   float raw = (float)touchRead(TOUCH_PIN);
   smoothed = smoothed * 0.5f + raw * 0.5f;
-  float delta = TOUCH_RISES ? (smoothed - baseline) : (baseline - smoothed);
-  float pct = 100.0f * delta / baseline;
+  float pct;                                 // % change in the "touched" direction
+  if (touchDir < 0)      pct = 100.0f * (baseline - smoothed) / baseline;
+  else if (touchDir > 0) pct = 100.0f * (smoothed - baseline) / baseline;
+  else                   pct = 100.0f * fabsf(smoothed - baseline) / baseline;
 
   if (dbg && now - lastDbg > 150) {
     lastDbg = now;
-    Serial.printf("raw=%.0f smooth=%.0f base=%.0f change=%.1f%% %s\n", raw, smoothed, baseline, pct, touched ? "TOUCH" : "");
+    Serial.printf("raw=%.0f smooth=%.0f base=%.0f change=%.1f%% dir=%s %s\n", raw, smoothed, baseline, pct,
+                  touchDir < 0 ? "drop" : touchDir > 0 ? "rise" : "?", touched ? "TOUCH" : "");
   }
 
   if (!touched) {
     if (pct >= touchOnPct) {
       if (++onCount >= 2 && now - lastFire >= TOUCH_COOLDOWN_MS) {
         touched = true; onCount = 0; lastFire = now;
+        if (touchDir == 0) {
+          touchDir = (smoothed < baseline) ? -1 : 1;
+          Serial.printf("Touch direction learned: reading %s when touched\n", touchDir < 0 ? "drops" : "rises");
+        }
         triggerLocal();
       }
     } else {
@@ -505,7 +525,10 @@ static void updateStatus(uint32_t now) {
 // ------------------------------- serial -------------------------------
 static void printInfo() {
   uint32_t now = millis();
-  Serial.printf("touch: on %.1f%%  off %.1f%%\n", touchOnPct, touchOffPct);
+  Serial.printf("core: Arduino-ESP32 %d.%d.%d, ESP-IDF %s\n", ESP_ARDUINO_VERSION_MAJOR, ESP_ARDUINO_VERSION_MINOR,
+                ESP_ARDUINO_VERSION_PATCH, esp_get_idf_version());
+  Serial.printf("touch: on %.1f%%  off %.1f%%  baseline %.0f  direction %s\n", touchOnPct, touchOffPct, baseline,
+                touchDir < 0 ? "drops" : touchDir > 0 ? "rises" : "not learned yet");
   Serial.printf("id=%08X  pos=", (unsigned)myId);
   if (myPosKnown) Serial.printf("(%d,%d)\n", myQ, myR); else Serial.println("unknown (RSSI mode)");
   for (int i = 0; i < MAX_NEIGHBORS; i++) {
@@ -539,6 +562,10 @@ static void runCommand(char *s) {
       touched = false; onCount = 0;
     }
     Serial.printf("Touch: on at %.1f%% change, release at %.1f%% (higher = less sensitive)\n", touchOnPct, touchOffPct);
+  } else if (strncmp(s, "cal", 3) == 0) {
+    Serial.println("Recalibrating - hands off the touch wire");
+    touchDir = 0;
+    calibrateTouch();
   } else if (strncmp(s, "dbg", 3) == 0) {
     dbg = !dbg;
   } else if (strncmp(s, "test", 4) == 0) {
@@ -546,7 +573,7 @@ static void runCommand(char *s) {
   } else if (strncmp(s, "info", 4) == 0) {
     printInfo();
   } else {
-    Serial.println("Commands: pos <q> <r> | pos auto | sens <on%> [off%] | test | dbg | info");
+    Serial.println("Commands: pos <q> <r> | pos auto | sens <on%> [off%] | cal | test | dbg | info");
   }
 }
 
@@ -598,7 +625,7 @@ void setup() {
   rxQueue = xQueueCreate(24, sizeof(RxItem));
   startRadio();
   printInfo();
-  Serial.println("Commands: pos <q> <r> | pos auto | sens <on%> [off%] | test | dbg | info");
+  Serial.println("Commands: pos <q> <r> | pos auto | sens <on%> [off%] | cal | test | dbg | info");
 }
 
 void loop() {
