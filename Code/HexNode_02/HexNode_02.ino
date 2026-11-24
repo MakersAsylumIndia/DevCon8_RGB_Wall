@@ -4,6 +4,8 @@
   CPU at 80 MHz + gentle radio start stop the brownout resets; touch sensitivity via 'sens' (default 60/30).
   Version 2.1 (24 Nov 2026): works on Arduino-ESP32 core 3.x and 4.x. Core 4.x (ESP-IDF 6) can report the
   touch reading moving the other way, so the direction is now learned from the first touch; 'cal' recalibrates.
+  Version 2.2 (24 Nov 2026): on core 4.x touchRead() returns ~0 on the classic ESP32, so the raw touch
+  register is read directly instead.
   ---------------------------------------------------
   Hardware : ESP32 DevKit (classic), WS2812B ring x16, bare wire on a touch pin
   Core     : Arduino-ESP32 3.x   (Boards Manager -> "esp32 by Espressif" 3.0.0 or newer)
@@ -51,6 +53,9 @@
 #include <string.h>
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
+#if defined(CONFIG_IDF_TARGET_ESP32)
+#include "soc/sens_struct.h"
+#endif
 
 // ============================ USER SETTINGS ============================
 // Brownout detector: 0 = on (normal). 1 = off, only for boards whose 3.3 V supply dips when the
@@ -173,6 +178,38 @@ uint32_t lastFire = 0, lastTouchSample = 0, lastDbg = 0;
 // touchDir: -1 = drops when touched, +1 = rises, 0 = not known yet (both directions count).
 int8_t   touchDir = 0;
 uint32_t lastCal = 0;
+
+// Core 4.x (ESP-IDF 6.1) on the classic ESP32: touchRead() returns ~0 (it reads the driver's
+// software-filtered value, which most likely is not updated there). If the sensor itself keeps measuring, fall back to
+// reading the raw count straight from the touch register (same register layout in ESP-IDF 5.5 and 6.1).
+#ifndef TOUCH_FORCE_REG
+#define TOUCH_FORCE_REG 0               // 1 = always use the register read (for testing on core 3.x)
+#endif
+bool     touchFromReg = TOUCH_FORCE_REG;
+#if defined(CONFIG_IDF_TARGET_ESP32)
+static uint32_t touchRegRead(int ch) {
+  if (ch == 8) ch = 9; else if (ch == 9) ch = 8;           // T8/T9 are swapped in the register
+  return (ch & 1) ? SENS.touch_meas[ch >> 1].l_val : SENS.touch_meas[ch >> 1].h_val;
+}
+#endif
+
+static uint32_t readTouch() {
+  uint32_t v = touchRead(TOUCH_PIN);                        // also starts the touch sensor on first use
+#if defined(CONFIG_IDF_TARGET_ESP32)
+  if (touchFromReg || v < 5) {
+    int ch = digitalPinToTouchChannel(TOUCH_PIN);
+    if (ch >= 0) {
+      uint32_t r = touchRegRead(ch);
+      if (touchFromReg) return r;                           // once switched, stay on the register (a touch can read < 5)
+      if (r >= 5) {
+        if (!touchFromReg) { touchFromReg = true; Serial.println("touchRead() gives ~0 on this core - reading the touch register directly"); }
+        return r;
+      }
+    }
+  }
+#endif
+  return v;
+}
 
 uint32_t lastHello = 0, lastFrame = 0, lastStatus = 0, statusUntil = 0;
 int      lastLinked = -1, statusCount = 0;
@@ -404,7 +441,7 @@ static void calibrateTouch() {
   float sum = 0;
   const int N = 40;
   for (int i = 0; i < N; i++) {
-    sum += touchRead(TOUCH_PIN);
+    sum += readTouch();
     ring.clear();
     ring.setPixelColor(i % NUM_LEDS, ring.Color(60, 60, 60));
     ring.show();
@@ -424,7 +461,7 @@ static void pollTouch(uint32_t now) {
     if (now - lastCal > 3000) calibrateTouch();
     return;
   }
-  float raw = (float)touchRead(TOUCH_PIN);
+  float raw = (float)readTouch();
   smoothed = smoothed * 0.5f + raw * 0.5f;
   float pct;                                 // % change in the "touched" direction
   if (touchDir < 0)      pct = 100.0f * (baseline - smoothed) / baseline;
@@ -529,6 +566,7 @@ static void printInfo() {
                 ESP_ARDUINO_VERSION_PATCH, esp_get_idf_version());
   Serial.printf("touch: on %.1f%%  off %.1f%%  baseline %.0f  direction %s\n", touchOnPct, touchOffPct, baseline,
                 touchDir < 0 ? "drops" : touchDir > 0 ? "rises" : "not learned yet");
+  Serial.printf("touch source: %s\n", touchFromReg ? "touch register (touchRead() gave ~0)" : "touchRead()");
   Serial.printf("id=%08X  pos=", (unsigned)myId);
   if (myPosKnown) Serial.printf("(%d,%d)\n", myQ, myR); else Serial.println("unknown (RSSI mode)");
   for (int i = 0; i < MAX_NEIGHBORS; i++) {
