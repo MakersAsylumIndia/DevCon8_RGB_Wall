@@ -130,6 +130,7 @@ Prices were checked on 15 Nov 2026. "Unverified" means the price came from a sea
 | [`HexNode_RGB_Wall.FCStd`](HexNode_RGB_Wall.FCStd) | FreeCAD 1.1 model. `V03Params` (spreadsheet), `V03Parts`, `V03Demo` (two rows), `ExplodedNodeV03` |
 | [`v03_suggestion.FCStd`](v03_suggestion.FCStd) | The hand-made reference that v03 follows |
 | [`scripts/v03.py`](scripts/v03.py) | Builds everything: `v03.build(doc)`, `v03.checks(doc, p)`, `v03.export_v03(doc, "export")`. It uses `v02.py` for the ring clips and `wall.py` for helpers |
+| [`export/guide/`](export/guide/) | **Assembly guide** `HexNode_v03_assembly_guide.pdf` (and .html), 19 pages. Pictures: `scripts/render_guide_v03.py` (run in FreeCAD); layout + PDF: `scripts/make_guide_v03.py` |
 | [`export/print/`](export/print/) | `Bracket_v03_pocket.stl`, `Carrier_v03_A_base.stl`, `Carrier_v03_B_deck.stl`, in print orientation |
 | `export/print/*_P1S.gcode.3mf` | Sliced for a Bambu P1S, PETG, 0.2 mm, textured PEI: `HexNode_v03_node_pocket_P1S` (pocket bracket + both carrier parts on one plate, 3 walls, 30 % gyroid, 54 min, 21.4 g) |
 | `export/print/Carrier_v03_A_base_PLA_P1S.gcode.3mf` | Carrier base alone in PLA: 3 walls, 30 % gyroid, 24 min, 8.7 g |

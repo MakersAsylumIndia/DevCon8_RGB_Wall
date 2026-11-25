@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HexNode Assembly Guide</title><style>
+@page { size: 10in 5.625in; margin: 0; }
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { margin: 0; background: #ddd; font-family: "Lato", sans-serif; color: #231F20; }
+h1, h2, .num, .sub, th, .links span, .links2 b { font-family: "Titillium Web", sans-serif; }
+.page { position: relative; width: 10in; height: 5.625in; background: #fff; overflow: hidden;
+         margin: 0 auto 12px; page-break-after: always; break-after: page; padding: 0.34in 0.34in 0.3in; }
+.page .ma { position: absolute; top: 0.22in; right: 0.32in; width: 1.42in; }
+.pn { position: absolute; right: 0.3in; bottom: 0.18in; font-size: 10pt; color: #898989; }
+h2 { font-size: 26pt; font-weight: 700; margin: 0.02in 1.7in 0.18in 0; display: flex; align-items: center; gap: 0.16in; }
+.num { background: #FCBF15; color: #231F20; font-weight: 700; font-size: 20pt; width: 0.5in; height: 0.5in;
+        border-radius: 50%; display: inline-grid; place-items: center; flex: none; }
+.cols { display: grid; grid-template-columns: 0.95fr 1.15fr; gap: 0.3in; height: 4.25in; align-items: center; }
+.txt { font-size: 13pt; line-height: 1.42; color: #414042; }
+.txt b { color: #231F20; }
+.parts { list-style: none; padding: 0; margin: 0 0 0.14in; display: flex; flex-wrap: wrap; gap: 6px; }
+.parts li { background: #F8F8F8; border-left: 4px solid #FCBF15; padding: 2px 9px; font-size: 10.5pt; color: #231F20; }
+.pic { height: 100%; display: flex; align-items: center; justify-content: center; }
+.pic img { max-width: 100%; max-height: 4.2in; }
+table { border-collapse: collapse; width: 100%; font-size: 10.5pt; color: #414042; }
+th { background: #FCBF15; color: #231F20; text-align: left; padding: 5px 8px; }
+td { border-bottom: 1px solid #CCCCCC; padding: 5px 8px; vertical-align: top; }
+td b { color: #231F20; }
+.bagwrap { margin-top: 0.05in; }
+h3 { font-family: "Titillium Web", sans-serif; font-weight: 700; font-size: 14pt; margin: 0.16in 0 0.04in; }
+.acc { list-style: none; padding: 0; margin: 0; display: flex; gap: 0.3in; font-size: 10.5pt; color: #414042; }
+.acc li { border-left: 4px solid #FCBF15; padding-left: 8px; }
+.acc b { color: #231F20; display: block; }
+.trouble td:first-child { color: #231F20; font-weight: 700; width: 26%; }
+.cover { padding: 0; display: grid; grid-template-columns: 50% 50%; }
+.cover .panel { background: #FCBF15; padding: 0.3in 0.45in; position: relative; }
+.ma-big { width: 3.4in; }
+.cover h1 { font-size: 42pt; font-weight: 700; margin: 0.45in 0 0.04in; }
+.cover .sub { font-size: 21pt; font-weight: 300; margin: 0; line-height: 1.2; }
+.cover .meta { position: absolute; left: 0.45in; bottom: 0.32in; margin: 0; font-size: 11pt; }
+.cover .right { position: relative; padding: 0.3in; }
+.mbc { position: absolute; top: 0.18in; right: 0.32in; width: 1.45in; z-index: 2; }
+.hero { position: absolute; left: 0.3in; right: 0.3in; top: 1.35in; width: calc(100% - 0.6in); height: calc(100% - 2.4in); object-fit: contain; }
+.links { position: absolute; left: 0.3in; right: 0.3in; bottom: 0.25in; font-size: 10.5pt; color: #414042; }
+.links span { display: inline-block; width: 1.25in; color: #231F20; font-weight: 700; }
+a { color: #231F20; text-decoration: none; border-bottom: 2px solid #FCBF15; }
+.links2 { font-size: 12pt; }
+.lic { font-size: 9.5pt; color: #414042; margin-top: 0.25in; }
+@media print { body { background: #fff; } .page { margin: 0; } }
+</style></head>
+<body>
+<section class="page cover">
+  <div class="panel">
+    <img class="ma-big" src="assets/MA_Standard_Black.svg" alt="Maker's Asylum">
+    <h1>HexNode v03</h1>
+    <p class="sub">RGB wall node<br>Assembly guide</p>
+    <p class="meta">Soldering iron · wire stripper · scissors · about 30–45 minutes</p>
+  </div>
+  <div class="right">
+    <img class="mbc" src="assets/MBC_wordmark.svg" alt="make. break. create.">
+    <img class="hero" src="assets/t_finished.png" alt="The finished node">
+    <div class="links">
+      <div><span>Files &amp; design</span> <a href="https://github.com/MakersAsylumIndia/DevCon8_RGB_Wall">github.com/MakersAsylumIndia/DevCon8_RGB_Wall</a></div>
+      <div><span>Maker's Asylum</span> <a href="https://www.makersasylum.com">makersasylum.com</a></div>
+    </div>
+  </div>
+</section>
+<section class="page ">
+  <img class="ma" src="assets/MA_Standard_Color.svg" alt="Maker's Asylum">
+  <h2>In the bag</h2>
+  <div class="bagwrap"><table class="bag"><tr><th>Printed (PETG)</th><th>Electronics</th><th>Other</th></tr><tr><td>Bracket ×1 (blue in the pictures)</td><td>ESP32 DevKit V1 ×1</td><td>Copper tape, 10 mm wide: 2 × 30 mm</td></tr><tr><td>Carrier base ×1 (yellow)</td><td>16-LED RGB ring with JST cable (no. 2) ×1</td><td>1.75 mm filament: 3 × 30 mm</td></tr><tr><td>Carrier deck ×1 (green)</td><td>3-pin JST cable (no. 1) ×1</td><td>Neodymium magnets 10 × 10 × 2 mm ×2</td></tr><tr><td></td><td></td><td>Metal washer ×1 (touch pad)</td></tr><tr><td></td><td></td><td>1 mm double-sided foam tape, painter&#x27;s tape</td></tr></table></div>
+  <h3>Tools</h3>
+  <ul class="acc"><li><b>Soldering iron and solder</b> for the power wires and the contact pads</li><li><b>Wire cutter and stripper</b> to cut the JST cable wires and trim the filament</li><li><b>Scissors</b> for the copper tape and painter&#x27;s tape</li></ul>
+  <div class="pn">2</div>
+</section>
+<section class="page step">
+  <img class="ma" src="assets/MA_Standard_Color.svg" alt="Maker's Asylum">
+  <h2><span class="num">1</span>Copper tape on the spring tabs</h2>
+  <div class="cols">
+    <div class="txt"><ul class="parts"><li>bracket</li><li>2 × copper tape 10 × 30 mm</li></ul><p>Cut two strips of <b>10 mm wide copper tape, each 30 mm long</b>. Peel off half the backing and stick that half on a spring tab, on the <b>magnet side</b> of the bracket. Push the rest of the strip through to the other side and stick it down firmly all round. On the other side, the tab has a groove for the power wire: <b>press the tape into the groove</b>. Do the same on the second tab, so both <b>+5V</b> and <b>GND</b> are taped.</p></div>
+    <div class="pic"><img src="assets/t_step_01.png" alt="Step 1"></div>
+  </div>
+  <div class="pn">3</div>
+</section>
+<section class="page step">
+  <img class="ma" src="assets/MA_Standard_Color.svg" alt="Maker's Asylum">
+  <h2><span class="num">2</span>Power wires</h2>
+  <div class="cols">
+    <div class="txt"><ul class="parts"><li>JST cable no. 1</li><li>wire stripper</li><li>soldering iron</li></ul><p>Take <b>JST cable no. 1</b>. Cut two of its wires to <b>60 mm</b>: red and brown (on a red / brown / black cable) or red and black (on a red / black / yellow cable). <b>Don't cut the third wire</b> (black or yellow): it becomes the touch wire later. Strip about <b>10 mm</b> off the cut ends and solder them to the copper tape in the tab grooves: <b>red to the + tab</b>, the other wire to the − tab.</p></div>
+    <div class="pic"><img src="assets/t_step_02.png" alt="Step 2"></div>
+  </div>
+  <div class="pn">4</div>
+</section>
+<section class="page step">
+  <img class="ma" src="assets/MA_Standard_Color.svg" alt="Maker's Asylum">
+  <h2><span class="num">3</span>Solder the contact pads</h2>
+  <div class="cols">
+    <div class="txt"><ul class="parts"><li>solder</li></ul><p>Turn the bracket over. Each spring tab has a raised pad at its end: this is what touches the power rail on the wall. Run a <b>thin layer of solder</b> over the copper tape on each pad.</p></div>
+    <div class="pic"><img src="assets/t_step_03.png" alt="Step 3"></div>
+  </div>
+  <div class="pn">5</div>
+</section>
+<section class="page step">
+  <img class="ma" src="assets/MA_Standard_Color.svg" alt="Maker's Asylum">
+  <h2><span class="num">4</span>Anchor the wires</h2>
+  <div class="cols">
+    <div class="txt"><ul class="parts"><li>painter&#x27;s tape</li></ul><p>Lay each wire in its groove on the bracket and hold it down with a <b>long strip of painter's tape</b>: from the spring tab (over the copper tape) <b>all the way to the edge</b> of the bracket.</p></div>
+    <div class="pic"><img src="assets/t_step_04.png" alt="Step 4"></div>
+  </div>
+  <div class="pn">6</div>
+</section>
+<section class="page step">
+  <img class="ma" src="assets/MA_Standard_Color.svg" alt="Maker's Asylum">
+  <h2><span class="num">5</span>Carrier base onto the bracket</h2>
+  <div class="cols">
+    <div class="txt"><ul class="parts"><li>carrier base</li></ul><p>Put the carrier base on the bracket. The <b>[+] and [−] marks</b> on the bracket and on the carrier base <b>must line up</b>.</p></div>
+    <div class="pic"><img src="assets/t_step_05.png" alt="Step 5"></div>
+  </div>
+  <div class="pn">7</div>
+</section>
+<section class="page step">
+  <img class="ma" src="assets/MA_Standard_Color.svg" alt="Maker's Asylum">
+  <h2><span class="num">6</span>Power connector into its socket</h2>
+  <div class="cols">
+    <div class="txt"><ul class="parts"><li>JST connector no. 1</li></ul><p>Slide <b>JST connector no. 1</b> (the power cable) into its socket on the carrier base, on the side with the <b>[−] mark</b> (the one labelled PWR). The <b>red wire goes nearest the edge</b> of the carrier base.</p></div>
+    <div class="pic"><img src="assets/t_step_06.png" alt="Step 6"></div>
+  </div>
+  <div class="pn">8</div>
+</section>
+<section class="page step">
+  <img class="ma" src="assets/MA_Standard_Color.svg" alt="Maker's Asylum">
+  <h2><span class="num">7</span>LED ring connector into its socket</h2>
+  <div class="cols">
+    <div class="txt"><ul class="parts"><li>JST connector no. 2 (on the LED ring)</li></ul><p>The LED ring already has a 3-pin JST cable soldered to it. Slide this <b>JST connector no. 2</b> into the other socket, on the side with the <b>[+] mark</b> (labelled LED). Again, the <b>red wire goes nearest the edge</b>.</p></div>
+    <div class="pic"><img src="assets/t_step_07.png" alt="Step 7"></div>
+  </div>
+  <div class="pn">9</div>
+</section>
+<section class="page step">
+  <img class="ma" src="assets/MA_Standard_Color.svg" alt="Maker's Asylum">
+  <h2><span class="num">8</span>Fit the LED ring</h2>
+  <div class="cols">
+    <div class="txt"><ul class="parts"><li>RGB LED ring</li></ul><p>Fit the LED ring into the carrier base. Turn it so its <b>wires are at about 10 to 11 o'clock</b>, near the LED socket (USB end of the node = 12 o'clock). Two of the holes in the ring should now line up with two of the <b>four clips</b> that hold it.</p></div>
+    <div class="pic"><img src="assets/t_step_08.png" alt="Step 8"></div>
+  </div>
+  <div class="pn">10</div>
+</section>
+<section class="page step">
+  <img class="ma" src="assets/MA_Standard_Color.svg" alt="Maker's Asylum">
+  <h2><span class="num">9</span>Tape the wires down</h2>
+  <div class="cols">
+    <div class="txt"><ul class="parts"><li>painter&#x27;s tape</li></ul><p>Check that the wires from both connectors run in the <b>cable channels</b>. Put a narrow strip of painter's tape across the top edge of the carrier base, over the wires, so they stay in place.</p></div>
+    <div class="pic"><img src="assets/t_step_09.png" alt="Step 9"></div>
+  </div>
+  <div class="pn">11</div>
+</section>
+<section class="page step">
+  <img class="ma" src="assets/MA_Standard_Color.svg" alt="Maker's Asylum">
+  <h2><span class="num">10</span>Filament pins in the deck</h2>
+  <div class="cols">
+    <div class="txt"><ul class="parts"><li>carrier deck</li><li>3 × filament 1.75 mm, 30 mm long</li></ul><p>Push three <b>30 mm pieces of 1.75 mm 3D-printer filament</b> through the three holes in the carrier deck. Make the filament <b>flush with the top face</b> of the deck.</p></div>
+    <div class="pic"><img src="assets/t_step_10.png" alt="Step 10"></div>
+  </div>
+  <div class="pn">12</div>
+</section>
+<section class="page step">
+  <img class="ma" src="assets/MA_Standard_Color.svg" alt="Maker's Asylum">
+  <h2><span class="num">11</span>Deck onto the stack</h2>
+  <div class="cols">
+    <div class="txt"><ul class="parts"><li>deck from the step before</li></ul><p>Fit the deck, passing the filament pins through the matching holes in the carrier base and the bracket. Two <b>keying tabs</b> only let it go on one way: the <b>wide end of the deck at 6 o'clock</b>, the small USB cut-out at <b>12 o'clock</b>. Once it is lined up, <b>push it all the way in</b>. The three printed parts are now held together as one sandwich.</p></div>
+    <div class="pic"><img src="assets/t_step_11.png" alt="Step 11"></div>
+  </div>
+  <div class="pn">13</div>
+</section>
+<section class="page step">
+  <img class="ma" src="assets/MA_Standard_Color.svg" alt="Maker's Asylum">
+  <h2><span class="num">12</span>Trim the filament</h2>
+  <div class="cols">
+    <div class="txt"><ul class="parts"><li>wire cutter</li></ul><p>Turn the node over. The three filament pins stick out about <b>10 mm</b> from the magnet side of the bracket. <b>Cut them flush</b> with the bottom of the bracket, so the node sits flat on the wall.</p></div>
+    <div class="pic"><img src="assets/t_step_12.png" alt="Step 12"></div>
+  </div>
+  <div class="pn">14</div>
+</section>
+<section class="page step">
+  <img class="ma" src="assets/MA_Standard_Color.svg" alt="Maker's Asylum">
+  <h2><span class="num">13</span>ESP32</h2>
+  <div class="cols">
+    <div class="txt"><ul class="parts"><li>ESP32 DevKit</li></ul><p>Fit the ESP32 with its <b>USB connector at 12 o'clock</b>. The black plastic strips of the header pins must go <b>all the way into</b> the long slots in the deck.</p></div>
+    <div class="pic"><img src="assets/t_step_13.png" alt="Step 13"></div>
+  </div>
+  <div class="pn">15</div>
+</section>
+<section class="page step">
+  <img class="ma" src="assets/MA_Standard_Color.svg" alt="Maker's Asylum">
+  <h2><span class="num">14</span>Touch washer</h2>
+  <div class="cols">
+    <div class="txt"><ul class="parts"><li>metal washer</li><li>1 mm double-sided foam tape</li><li>painter&#x27;s tape</li></ul><p>Stick a piece of <b>1 mm double-sided foam tape</b> on the ESP32's metal shield. Cut the last wire of JST cable no. 1 (the touch wire, black or yellow) to about <b>110 mm</b> and strip <b>20–25 mm</b> off the end. Twist the bare strands and fix them firmly to the <b>metal washer</b>. Cover any bare wire with painter's tape, but <b>leave the washer uncovered</b>. Stick the washer on the foam tape.</p></div>
+    <div class="pic"><img src="assets/t_step_14.png" alt="Step 14"></div>
+  </div>
+  <div class="pn">16</div>
+</section>
+<section class="page step">
+  <img class="ma" src="assets/MA_Standard_Color.svg" alt="Maker's Asylum">
+  <h2><span class="num">15</span>Magnets</h2>
+  <div class="cols">
+    <div class="txt"><ul class="parts"><li>2 × magnet 10 × 10 × 2 mm</li></ul><p>Press <b>two 10 × 10 × 2 mm neodymium magnets</b> into the pockets under the bracket. There are four pockets, but two are enough. Put both magnets in <b>the same way round</b> (same pole facing out).</p></div>
+    <div class="pic"><img src="assets/t_step_15.png" alt="Step 15"></div>
+  </div>
+  <div class="pn">17</div>
+</section>
+<section class="page ">
+  <img class="ma" src="assets/MA_Standard_Color.svg" alt="Maker's Asylum">
+  <h2>If it doesn't work</h2>
+  <table class="trouble"><tr><th>What you see</th><th>Cause</th><th>Fix</th></tr><tr><td>Nothing lights up on the wall</td><td>The contact pads don't touch the rails, or a power wire is loose</td><td>Steps 2–3: check the solders and add a little more solder on the pads</td></tr><tr><td>LEDs dark but the ESP32 is on</td><td>LED connector (no. 2) the wrong way round</td><td>Step 7: red wire nearest the edge</td></tr><tr><td>ESP32 doesn't power up</td><td>Power connector (no. 1) in the wrong socket or the wrong way round</td><td>Step 6: [−] / PWR socket, red wire nearest the edge</td></tr><tr><td>Touch does nothing</td><td>Washer covered by tape, or the wire is loose on the washer</td><td>Step 14: bare washer, wire twisted on firmly</td></tr><tr><td>Node won't sit flat on the wall</td><td>Filament sticking out under the bracket, or a magnet standing proud</td><td>Step 12: trim the filament flush; press the magnets fully into their pockets</td></tr><tr><td>Parts don't line up</td><td>Carrier base turned round</td><td>Step 5: [+] over [+], [−] over [−]</td></tr></table>
+  <div class="pn">18</div>
+</section>
+<section class="page step">
+  <img class="ma" src="assets/MA_Standard_Color.svg" alt="Maker's Asylum">
+  <h2>On the wall</h2>
+  <div class="cols">
+    <div class="txt">
+      <p>Press the node onto its place on the RGB Node Wall: the magnets hold it, and the soldered pads on the spring tabs pick up +5V and GND from the copper rails. <b>Enjoy!</b></p>
+      <p>The node is fully parametric. The printed parts, the laser-cut rails and the pictures in this guide come from one FreeCAD script, and the firmware is in the same repository.</p>
+      <p class="links2"><b>Design files</b><br><a href="https://github.com/MakersAsylumIndia/DevCon8_RGB_Wall">github.com/MakersAsylumIndia/DevCon8_RGB_Wall</a><br><br>
+         <b>Maker's Asylum</b><br><a href="https://www.makersasylum.com">makersasylum.com</a></p>
+      <p class="lic">Hardware: CERN-OHL-S-2.0 · Software: MIT · Documentation: CC BY 4.0</p>
+    </div>
+    <div class="pic"><img src="assets/t_finished.png" alt="Finished node"></div>
+  </div>
+  <div class="pn">19</div>
+</section>
+</body></html>
