@@ -83,7 +83,7 @@ The whole node stands 23.7 mm off the board. Neighbouring carriers are 3.6 mm ap
 
 ### Node wiring
 
-The wires are modelled in the `V03Wiring` group (26 AWG, 1.2 mm), with the touch washer and foam. Both JST housings face the same way. Pin 1 is the pin nearest the USB end. Each wire leaves its housing straight down, runs in the floor recess and the base channel, and comes out at the USB-end edge. The base top is engraved **PWR** and **LED** beside the two pockets.
+The wires are modelled in the `V03Wiring` group (26 AWG, 1.2 mm), with the touch washer and foam. Both JST housings face the same way. Pin 1 is the pin nearest the USB end. Each wire leaves its housing straight down, runs in the floor recess and the base channel, and comes out at the USB-end edge. The base top has raised **PWR** and **LED** labels beside the two pockets (Liberation Sans Narrow Bold, 3.2 mm letters, 0.6 mm high; `LabelH`, `LabelD`).
 
 The wires are cables from the **Cables workbench** (sargo-devel/Cables, installed through the Addon Manager). Each one is a single 26 AWG conductor with 2 mm of bare copper at both ends. Each follows a smooth path, `wire_path()` in `v03.py`: straight runs joined by tangent bends of 1.5 mm radius, smaller where a run is short. That path is kept hidden as `WPath_*`. The Cables workbench only works with the FreeCAD window open, so a headless rebuild draws plain swept wires on the same paths. After a headless rebuild, run `v03.cable_wiring(App.ActiveDocument)` in the FreeCAD window to swap the plain wires for real cables and relink the demo wall. Render: `export/renders/v03_wiring_cables_iso.png`.
 
@@ -131,9 +131,9 @@ Prices were checked on 15 Nov 2026. "Unverified" means the price came from a sea
 | [`v03_suggestion.FCStd`](v03_suggestion.FCStd) | The hand-made reference that v03 follows |
 | [`scripts/v03.py`](scripts/v03.py) | Builds everything: `v03.build(doc)`, `v03.checks(doc, p)`, `v03.export_v03(doc, "export")`. It uses `v02.py` for the ring clips and `wall.py` for helpers |
 | [`export/print/`](export/print/) | `Bracket_v03_pocket.stl`, `Carrier_v03_A_base.stl`, `Carrier_v03_B_deck.stl`, in print orientation |
-| `export/print/*_P1S.gcode.3mf` | Sliced for a Bambu P1S, PETG, 0.2 mm, textured PEI: `HexNode_v03_node_pocket_P1S` (pocket bracket + both carrier parts, 51 min, 19.5 g) |
+| `export/print/*_P1S.gcode.3mf` | Sliced for a Bambu P1S, PETG, 0.2 mm, textured PEI: `HexNode_v03_node_pocket_P1S` (pocket bracket + both carrier parts on one plate, 3 walls, 30 % gyroid, 54 min, 21.4 g) |
 | `export/print/Carrier_v03_A_base_PLA_P1S.gcode.3mf` | Carrier base alone in PLA: 3 walls, 30 % gyroid, 24 min, 8.7 g |
-| `export/print/HexNode_v03_2sets_PETG_P1S.gcode.3mf` | Two full node sets (2 x pocket bracket + base + deck) on one plate, PETG, 3 walls, 30 % gyroid, 1 h 47 min, 42.7 g |
+| `export/print/HexNode_v03_2sets_PETG_P1S.gcode.3mf` | Two full node sets (2 x pocket bracket + base + deck) on one plate, PETG, 3 walls, 30 % gyroid, 1 h 47 min, 42.6 g |
 | `export/laser/*.lbrn2` | LightBurn projects made by `scripts/lightburn.py`: 4 +5V and 4 GND strips on one 1.8 mm sheet, and 2 rail gauges. Power and speed are placeholders |
 | [`export/step/`](export/step/) | The same parts as STEP |
 | [`export/laser/`](export/laser/) | `Plus_strip_1.8mm_x570.dxf`, `Gnd_strip_1.8mm_x570.dxf`, `Rail_gauge_any_sheet.dxf` |
@@ -151,7 +151,8 @@ Edit `V03Params` in the FreeCAD file, then run `v03.build(doc)` and `v03.export_
 | `PlusW`, `GndW` | 14, 20 | Strip widths. Keep them different by at least 4 mm |
 | `RailT` | 1.8 | Strip acrylic |
 | `AcrMagHole`, `MagPocket` | 9.75, 10.15 | Magnet pockets in acrylic (as drawn; 10.0 drawn cut to 10.25 on our laser, so 9.75 cuts to about 10.0) and in the print |
-| `CtTabW`, `CtTabL`, `CtTabT`, `CtPreload` | 10, 14.5, 1.2, 1.2 | Contact tab width, length, thickness and seated deflection |
+| `CtTabW`, `CtTabL`, `CtTabT`, `CtPreload` | 10, 14.5, 1.2, 0.4 | Contact tab width, length, thickness and seated deflection. `CtPreload` was 1.2: the contact pads stood 0.8 mm taller and the tabs flexed too far |
+| `LabelH`, `LabelD` | 3.2, 0.6 | Raised PWR / LED letter height and how far they stand above the base top |
 | `KeyPlusW`, `KeyGndW`, `KeyGndGap` | 12, 6, 10 | Polarity notches in the bracket lips (and the strips' tabs) |
 | `RivetHole` | 2.1 | Filament rivet holes (hand push fit for 1.75 mm; 2.0 printed too tight) |
 | `JstW`, `JstBodyW`, `JstH`, `JstFlangeT` | 9.8, 8.2, 7.75, 0.6 | JST XH 3P housing (from its STEP) |

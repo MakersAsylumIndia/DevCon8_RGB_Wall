@@ -63,7 +63,7 @@ V03_INPUTS = [
     ("CtEndGap", "2.5", "Slot beyond the tab's free end (room to wrap the copper tape round it)"),
     ("CtRootX", "4.5", "Contact tab root (fixed end), x: the tab windows stay clear of the JST pockets"),
     ("CtPadL", "6", "Contact pad length at the free end"),
-    ("CtPreload", "1.2", "Tab deflection when seated (pad bottom below the tape surface)"),
+    ("CtPreload", "0.4", "Tab deflection when seated (pad bottom below the tape surface). Was 1.2: the pads stood 0.8 mm taller and the tabs flexed too far"),
     ("CtGrooveW", "1.8", "Wire groove along the tab top to the bracket edge (and under the base, same line)"),
     ("CtGrooveD", "0.7", "Wire groove depth (bracket top; the base underside has the same)"),
     ("RivetHole", "2.1", "Filament rivet holes: 1.75 filament pushed in by hand (2.0 printed too tight), through all three parts"),
@@ -129,8 +129,8 @@ V03_INPUTS = [
     ("WasherID", "10", "Touch washer hole"),
     ("WasherT", "1.5", "Touch washer thickness (assumed: measure yours)"),
     ("FoamT", "3", "Laser-cut foam disc between the ESP32 shield and the washer (diameter = WasherOD)"),
-    ("LabelH", "3.0", "Engraved PWR / LED text height on the base top, beside the JST pockets"),
-    ("LabelD", "0.4", "Engraved text depth"),
+    ("LabelH", "3.2", "Raised PWR / LED letter (cap) height on the base top, beside the JST pockets"),
+    ("LabelD", "0.6", "Raised (embossed) text height above the base top"),
 ]
 
 SLOT_LEN, SLOT_OFF_X = 38.1, -1.96            # ESP32 header strips (15 pins), from the PCB centre
@@ -682,33 +682,35 @@ def carrier_base(p):
         s = s.cut(rivet_hole(p, x, y, zb, zt, p["RivetCh"], 0))
     for (yc_t, _), k in zip(tabs(p), "+-"):
         s = s.cut(sign_through(p, k, p["SignX"], yc_t, zb, zt))
-    s = s.cut(labels(p))
+    s = s.fuse(labels(p))
     r, h = p["DetentD"] / 2, p["DetentH"]
     s = s.fuse([_cone(x, y, zt - 0.01, r, r - h * 0.7, h + 0.01) for x, y in detents(p)])
     return s.removeSplitter()
 
 
-LABEL_AREAS = {"LED": (20.0, 25.4, 10.6, 17.0), "PWR": (20.0, 25.4, -17.0, -10.6)}   # base top, beside each pocket
+# Base top, in the strip between each JST pocket and the USB-end edge (x 19.8-25.6 is clear of features).
+# PWR stops at y -17.2: the yellow touch wire crosses the strip at y -17.95, just above the base top.
+LABEL_AREAS = {"LED": (19.8, 25.6, 10.6, 20.0), "PWR": (19.8, 25.6, -17.2, -7.8)}
+LABEL_FONT = "/usr/share/fonts/truetype/liberation/LiberationSansNarrow-Bold.ttf"   # narrow: taller letters fit
 
 
 def labels(p):
-    """Engraved PWR and LED on the base top, between each JST pocket and the USB-end edge, reading
-    up the node (+y). Returns the solids to cut."""
+    """Raised (embossed) PWR and LED on the base top, beside each JST pocket, reading up the node (+y).
+    Letters are LabelH tall (cap height), shrunk only if they would not fit their area. Returns solids to fuse."""
     out = []
     zt = p["CarTop"]
     for txt, (x0, x1, y0, y1) in LABEL_AREAS.items():
-        chars = Part.makeWireString(txt, FONT, p["LabelH"], 0)
+        chars = Part.makeWireString(txt, LABEL_FONT, 10.0, 0)
         faces = [Part.makeFace(c, "Part::FaceMakerBullseye") for c in chars]
         f = Part.makeCompound(faces)
         f.rotate(V(0, 0, 0), V(0, 0, 1), 90)
         bb = f.BoundBox
-        k = min(1.0, 0.92 * (y1 - y0) / bb.YLength, 0.92 * (x1 - x0) / bb.XLength)
-        if k < 1.0:
-            m = App.Matrix(); m.scale(k, k, 1)
-            f = f.transformGeometry(m)
-            bb = f.BoundBox
-        f.translate(V((x0 + x1) / 2 - bb.Center.x, (y0 + y1) / 2 - bb.Center.y, zt - p["LabelD"]))
-        out += [fc.extrude(V(0, 0, p["LabelD"] + 1)) for fc in f.Faces]
+        k = min(p["LabelH"] / bb.XLength, 0.94 * (y1 - y0) / bb.YLength, 0.94 * (x1 - x0) / bb.XLength)
+        m = App.Matrix(); m.scale(k, k, 1)
+        f = f.transformGeometry(m)
+        bb = f.BoundBox
+        f.translate(V((x0 + x1) / 2 - bb.Center.x, (y0 + y1) / 2 - bb.Center.y, zt - 0.01))
+        out += [fc.extrude(V(0, 0, p["LabelD"] + 0.01)) for fc in f.Faces]
     return out
 
 
